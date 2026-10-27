@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "user_profiles": {
+      "title": "UserProfile",
+      "description": "Public profile details of a forum member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["user", "moderator", "admin"] },
+        "customTitle": { "type": "string", "maxLength": 50 },
+        "signature": { "type": "string", "maxLength": 200 },
+        "messageCount": { "type": "number" },
+        "likesReceived": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "displayName", "role"]
+    },
+    "threads": {
+      "title": "Thread",
+      "description": "Discussion thread created in a forum category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "minLength": 3, "maxLength": 150 },
+        "categoryId": { "type": "string", "maxLength": 50 },
+        "prefix": { "type": "string", "maxLength": 20 },
+        "content": { "type": "string", "minLength": 2, "maxLength": 20000 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 50 },
+        "authorAvatar": { "type": "string", "maxLength": 500 },
+        "replyCount": { "type": "number" },
+        "viewCount": { "type": "number" },
+        "likeCount": { "type": "number" },
+        "lastReplyAt": { "type": "string" },
+        "lastReplyAuthorName": { "type": "string", "maxLength": 50 },
+        "isPinned": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "categoryId", "content", "authorId", "authorName"]
+    },
+    "replies": {
+      "title": "Reply",
+      "description": "Individual post or reply within a forum thread",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "threadId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 50 },
+        "authorAvatar": { "type": "string", "maxLength": 500 },
+        "content": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "likeCount": { "type": "number" },
+        "quoteAuthor": { "type": "string", "maxLength": 50 },
+        "quoteContent": { "type": "string", "maxLength": 500 },
+        "postNumber": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "threadId", "authorId", "authorName", "content"]
+    },
+    "likes": {
+      "title": "Like",
+      "description": "Reaction (+1 / Mis dies) by a user to a thread or reply",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "enum": ["thread", "reply"] },
+        "userId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "targetId", "targetType", "userId"]
+    }
+  },
+  "firestore": {
+    "/user_profiles/{userId}": {
+      "schema": { "$ref": "user_profiles" },
+      "description": "User profiles with message stats and forum credentials"
+    },
+    "/threads/{threadId}": {
+      "schema": { "$ref": "threads" },
+      "description": "Forum threads organized by category"
+    },
+    "/replies/{replyId}": {
+      "schema": { "$ref": "replies" },
+      "description": "Replies posted in discussion threads"
+    },
+    "/likes/{likeId}": {
+      "schema": { "$ref": "likes" },
+      "description": "User likes / mis dies reactions on threads or posts"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Foro Alterno",
+  "description": "Comunidad y foro de discusión estilo ForoParalelo con categorías, hilos en tiempo real, autenticación e interacciones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

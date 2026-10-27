@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    // Strict server-side validation against authorized admin email list
+    function isAdmin() {
+      return isSignedIn() && 
+        request.auth.token.email != null && 
+        request.auth.token.email.lower() in ['ancor.primee@gmail.com'];
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles
+    match /user_profiles/{userId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+        incoming().displayName is string && incoming().displayName.size() <= 50 &&
+        (!('role' in incoming()) || incoming().role == 'user' || isAdmin());
+      allow update: if isSignedIn() && isValidId(userId) && (
+        request.auth.uid == userId || isAdmin()
+      ) && (
+        !('role' in incoming()) || incoming().role == existing().role || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Threads
+    match /threads/{threadId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(threadId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().title is string && incoming().title.size() >= 3 && incoming().title.size() <= 150 &&
+        incoming().content is string && incoming().content.size() >= 2 && incoming().content.size() <= 50000;
+      allow update: if isSignedIn() && isValidId(threadId) && (
+        isAdmin() ||
+        (existing().authorId == request.auth.uid && incoming().authorId == existing().authorId) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['replyCount', 'lastReplyAt', 'lastReplyAuthorName', 'likeCount', 'viewCount'])
+      );
+      allow delete: if isSignedIn() && isValidId(threadId) && (
+        isAdmin() || existing().authorId == request.auth.uid
+      );
+    }
+
+    // Replies
+    match /replies/{replyId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(replyId) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().content is string && incoming().content.size() >= 1 && incoming().content.size() <= 50000;
+      allow update: if isSignedIn() && isValidId(replyId) && (
+        isAdmin() ||
+        (existing().authorId == request.auth.uid && incoming().authorId == existing().authorId) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['likeCount'])
+      );
+      allow delete: if isSignedIn() && isValidId(replyId) && (
+        isAdmin() || existing().authorId == request.auth.uid
+      );
+    }
+
+    // Likes / Mis dies
+    match /likes/{likeId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(likeId) &&
+        incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(likeId) && (
+        existing().userId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Admins list
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
