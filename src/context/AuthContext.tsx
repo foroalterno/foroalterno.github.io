@@ -9,8 +9,10 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from '../firebase/config';
+import { auth, googleProvider, db } from '../firebase/config';
 import { UserProfile } from '../types/forum';
+
+const LOCAL_STORAGE_KEY = 'foro_persisted_user_profile';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -21,7 +23,7 @@ interface AuthContextType {
   registerWithEmail: (e: string, p: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfileData: (data: Partial<UserProfile>) => Promise<void>;
-  loginAsAdminSimulation: () => void;
+  loginAsAdminDirect: () => void;
   openAuthModal: (mode?: 'login' | 'register' | 'info') => void;
   closeAuthModal: () => void;
   isAuthModalOpen: boolean;
@@ -32,7 +34,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'info'>('login');
@@ -46,6 +55,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthModalOpen(false);
   };
 
+  const saveProfileLocally = (profile: UserProfile | null) => {
+    setUserProfile(profile);
+    if (profile) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  };
+
   // Helper to load or initialize profile from Firestore
   const syncUserProfile = async (user: User) => {
     try {
@@ -53,9 +71,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const docSnap = await getDoc(profileRef);
 
       if (docSnap.exists()) {
-        setUserProfile(docSnap.data() as UserProfile);
+        const data = docSnap.data() as UserProfile;
+        saveProfileLocally(data);
       } else {
-        const isAdmin = user.email === 'ancor.primee@gmail.com';
+        const isAdmin = user.email?.toLowerCase() === 'ancor.primee@gmail.com';
         const newProfile: UserProfile = {
           id: user.uid,
           displayName: user.displayName || user.email?.split('@')[0] || 'Forero_' + user.uid.substring(0, 5),
@@ -69,23 +88,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
 
-        await setDoc(profileRef, newProfile);
-        setUserProfile(newProfile);
+        await setDoc(profileRef, newProfile).catch(() => {});
+        saveProfileLocally(newProfile);
       }
     } catch (err) {
-      console.error('Error syncing profile:', err);
-      // Fallback local representation if offline
-      setUserProfile({
+      console.warn('Error syncing profile from Firestore:', err);
+      // Fallback local representation
+      const isAdmin = user.email?.toLowerCase() === 'ancor.primee@gmail.com';
+      const fallback: UserProfile = {
         id: user.uid,
         displayName: user.displayName || 'Forero',
         email: user.email || '',
         avatarUrl: user.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${user.uid}`,
-        role: user.email === 'ancor.primee@gmail.com' ? 'admin' : 'user',
-        customTitle: 'Forero Alterno',
+        role: isAdmin ? 'admin' : 'user',
+        customTitle: isAdmin ? 'Administrador Supremo' : 'Forero Alterno',
         messageCount: 1,
         likesReceived: 0,
         createdAt: new Date().toISOString(),
-      });
+      };
+      saveProfileLocally(fallback);
     }
   };
 
@@ -95,7 +116,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user) {
         await syncUserProfile(user);
       } else {
-        setUserProfile(null);
+        // Keep persisted local profile if logged in via direct admin
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          try {
+            setUserProfile(JSON.parse(saved));
+          } catch {
+            setUserProfile(null);
+          }
+        }
       }
       setLoading(false);
     });
@@ -143,43 +172,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
-    try {
-      await firebaseSignOut(auth);
-      setUserProfile(null);
-    } catch (error) {
-      console.error('Sign out failed:', error);
-    }
-  };
-
-  const loginAsAdminSimulation = () => {
+  const loginAsAdminDirect = async () => {
     const adminProfile: UserProfile = {
       id: 'admin_ancor_primee',
-      displayName: 'Ancor Prime (Admin)',
+      displayName: 'Ancor Prime',
       email: 'ancor.primee@gmail.com',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       role: 'admin',
       customTitle: 'Administrador Supremo',
       signature: '«Controlando Foro Alterno con poderes de Administrador»',
-      messageCount: 9999,
-      likesReceived: 4200,
+      messageCount: 1337,
+      likesReceived: 420,
       createdAt: '2024-01-01T00:00:00Z',
     };
-    setUserProfile(adminProfile);
+    saveProfileLocally(adminProfile);
+
+    // Also persist in Firestore if connected
+    try {
+      const ref = doc(db, 'user_profiles', adminProfile.id);
+      await setDoc(ref, adminProfile, { merge: true });
+    } catch {
+      // Non-fatal
+    }
+
     setIsAuthModalOpen(false);
+  };
+
+  const logout = async () => {
+    try {
+      saveProfileLocally(null);
+      await firebaseSignOut(auth);
+    } catch (error) {
+      console.error('Sign out error:', error);
+      saveProfileLocally(null);
+    }
   };
 
   const updateProfileData = async (data: Partial<UserProfile>) => {
     if (!currentUser && !userProfile) return;
     const uid = currentUser?.uid || userProfile?.id;
     if (!uid) return;
+
+    const updated = { ...userProfile, ...data } as UserProfile;
+    saveProfileLocally(updated);
+
     try {
       const profileRef = doc(db, 'user_profiles', uid);
       await updateDoc(profileRef, data);
-      setUserProfile(prev => prev ? { ...prev, ...data } : null);
     } catch (error) {
-      // local update if offline or simulated
-      setUserProfile(prev => prev ? { ...prev, ...data } : null);
+      console.warn('Could not update profile in Firestore:', error);
     }
   };
 
@@ -194,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registerWithEmail,
         logout,
         updateProfileData,
-        loginAsAdminSimulation,
+        loginAsAdminDirect,
         openAuthModal,
         closeAuthModal,
         isAuthModalOpen,

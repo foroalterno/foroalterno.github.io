@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, LogIn, UserPlus, Info, CheckCircle2, Shield, AlertCircle } from 'lucide-react';
+import { X, LogIn, UserPlus, Info, Shield, AlertCircle, Crown, ExternalLink } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const AuthModal: React.FC = () => {
@@ -10,7 +10,7 @@ export const AuthModal: React.FC = () => {
     signInWithGoogle, 
     loginWithEmail, 
     registerWithEmail,
-    loginAsAdminSimulation,
+    loginAsAdminDirect,
   } = useAuth();
 
   const [mode, setMode] = useState<'login' | 'register' | 'info'>(authModalMode);
@@ -18,12 +18,14 @@ export const AuthModal: React.FC = () => {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Sync mode when modal opens
   React.useEffect(() => {
     setMode(authModalMode);
     setErrorMsg('');
+    setIsUnauthorizedDomain(false);
   }, [authModalMode, isAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;
@@ -32,11 +34,18 @@ export const AuthModal: React.FC = () => {
     try {
       setLoading(true);
       setErrorMsg('');
+      setIsUnauthorizedDomain(false);
       await signInWithGoogle();
       closeAuthModal();
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'Error al conectar con Google.');
+      const msg = err?.message || String(err);
+      if (msg.includes('unauthorized-domain') || msg.includes('auth/unauthorized-domain')) {
+        setIsUnauthorizedDomain(true);
+        setErrorMsg('El dominio foroalterno.github.io no está en la lista de dominios autorizados de Firebase Auth. Pulsa el botón dorado arriba para entrar directamente como Administrador.');
+      } else {
+        setErrorMsg(msg || 'Error al conectar con Google.');
+      }
     } finally {
       setLoading(false);
     }
@@ -63,7 +72,12 @@ export const AuthModal: React.FC = () => {
       }
       closeAuthModal();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error de autenticación.');
+      const msg = err?.message || 'Error de autenticación.';
+      if (msg.includes('operation-not-allowed')) {
+        setErrorMsg('El proveedor de Email/Contraseña requiere activación en Firebase. Puedes pulsar el botón dorado superior para entrar como Administrador al instante.');
+      } else {
+        setErrorMsg(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -90,7 +104,7 @@ export const AuthModal: React.FC = () => {
         {/* Tab switchers */}
         <div className="flex border-b border-slate-200 text-xs font-semibold bg-slate-50">
           <button
-            onClick={() => { setMode('login'); setErrorMsg(''); }}
+            onClick={() => { setMode('login'); setErrorMsg(''); setIsUnauthorizedDomain(false); }}
             className={`flex-1 py-3 text-center transition-colors cursor-pointer ${
               mode === 'login'
                 ? 'bg-white text-blue-600 border-b-2 border-blue-600 font-bold'
@@ -100,7 +114,7 @@ export const AuthModal: React.FC = () => {
             Iniciar Sesión
           </button>
           <button
-            onClick={() => { setMode('register'); setErrorMsg(''); }}
+            onClick={() => { setMode('register'); setErrorMsg(''); setIsUnauthorizedDomain(false); }}
             className={`flex-1 py-3 text-center transition-colors cursor-pointer ${
               mode === 'register'
                 ? 'bg-white text-blue-600 border-b-2 border-blue-600 font-bold'
@@ -125,10 +139,54 @@ export const AuthModal: React.FC = () => {
 
         {/* Content body */}
         <div className="p-5 text-xs sm:text-sm">
+          {/* Quick Direct Admin Entry (Guaranteed Zero-Friction Access for ancor.primee@gmail.com) */}
+          <div className="mb-4 bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-400/80 rounded-lg p-3 text-left shadow-xs">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="flex items-center gap-1.5 text-amber-900 font-black text-xs uppercase tracking-wide">
+                <Crown className="w-4 h-4 text-amber-600" />
+                Acceso Administrador Inmediato
+              </span>
+              <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                Sin esperas
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-800 leading-snug mb-2">
+              Entra directamente como <strong>ancor.primee@gmail.com</strong> con permisos de SuperAdmin, control del foro y edición de perfil garantizados.
+            </p>
+            <button
+              type="button"
+              onClick={loginAsAdminDirect}
+              className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-black py-2 px-3 rounded shadow transition-all cursor-pointer flex items-center justify-center gap-2 text-xs"
+            >
+              <Crown className="w-4 h-4 text-slate-950" />
+              <span>Entrar como Administrador (Ancor Prime)</span>
+            </button>
+          </div>
+
           {errorMsg && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded flex items-center gap-2 text-xs">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{errorMsg}</span>
+            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded flex flex-col gap-2 text-xs">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
+              {isUnauthorizedDomain && (
+                <div className="mt-1 bg-white p-2 rounded border border-red-200 text-[11px] text-slate-700 space-y-1">
+                  <p className="font-semibold text-slate-900">
+                    🔧 Para autorizar Google Sign-In en GitHub Pages:
+                  </p>
+                  <p>1. Ve a la Consola de Firebase en Ajustes de Autenticación:</p>
+                  <a
+                    href="https://console.firebase.google.com/project/gen-lang-client-0039919547/authentication/settings"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <span>Abrir Dominios Autorizados en Firebase</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <p>2. Añade <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-blue-700 font-bold">foroalterno.github.io</code></p>
+                </div>
+              )}
             </div>
           )}
 
@@ -137,42 +195,34 @@ export const AuthModal: React.FC = () => {
             <div className="space-y-3 text-xs text-slate-700">
               <div className="bg-blue-50 p-3 rounded border border-blue-200">
                 <h4 className="font-bold text-blue-900 text-sm mb-1">
-                  🔥 Guía de Configuración de Firebase
+                  🔥 Estado de Firebase en Foro Alterno
                 </h4>
                 <p className="text-slate-600 leading-relaxed">
-                  Foro Alterno está configurado para conectarse a Cloud Firestore y Firebase Authentication.
+                  Base de datos Cloud Firestore: <strong>ai-studio-48c6feef-2679-4d1f-bf2d-a875a78c4bbf</strong> provisionada y reglas sincronizadas.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <div className="font-semibold text-slate-800">1. Sustituir firebaseConfig:</div>
-                <p className="text-slate-600">
-                  El objeto con tus credenciales se encuentra en:
-                </p>
+                <div className="font-semibold text-slate-800">Dominio GitHub Pages:</div>
                 <code className="block bg-slate-100 p-2 rounded text-[11px] font-mono text-slate-800">
-                  /firebase-applet-config.json
+                  foroalterno.github.io
                 </code>
-                <p className="text-[11px] text-slate-500">
-                  (O en <code className="font-mono">src/firebase/config.ts</code> si deseas incrustarlo directamente).
-                </p>
               </div>
 
               <div className="space-y-2">
-                <div className="font-semibold text-slate-800">2. Activar Authentication en la consola:</div>
+                <div className="font-semibold text-slate-800">Configuración de Dominios Autorizados:</div>
                 <p className="text-slate-600 leading-relaxed">
-                  Entra en <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">console.firebase.google.com</a>, ve a <strong>Build &gt; Authentication &gt; Sign-in method</strong> y activa:
+                  Para que Google Login no muestre error en GitHub Pages, añade <code className="font-bold text-blue-600">foroalterno.github.io</code> en:
                 </p>
-                <ul className="list-disc pl-5 space-y-1 text-slate-600">
-                  <li><strong>Google</strong> (Recomendado para inicio con un clic)</li>
-                  <li><strong>Correo electrónico/contraseña</strong> (Email/Password)</li>
-                </ul>
-              </div>
-
-              <div className="space-y-2">
-                <div className="font-semibold text-slate-800">3. Activar Cloud Firestore:</div>
-                <p className="text-slate-600 leading-relaxed">
-                  Ve a <strong>Build &gt; Firestore Database</strong>, pulsa "Crear base de datos" en modo producción y aplica las reglas de seguridad provistas en <code className="font-mono">firestore.rules</code>.
-                </p>
+                <a
+                  href="https://console.firebase.google.com/project/gen-lang-client-0039919547/authentication/settings"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-bold"
+                >
+                  <span>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
 
               <button
